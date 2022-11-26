@@ -8,41 +8,67 @@
 SOCKET Connections[100];
 int Counter = 0;
 
-void Start_listen(int index) {
-	int msg_size;
-	while (true) {
-		recv(Connections[index], (char*)&msg_size, sizeof(int), NULL);
-		char* msg = new char[msg_size + 1];
-		msg[msg_size] = '\0';
-		recv(Connections[index], msg, msg_size, NULL);
-		char* a = new char[1];
-		for (int i = 0; i < Counter; i++) {
-			std::cout << msg << std::endl;
-			if (msg ==a ) {
-				std::cout << "Была запрошена команда 1)" << std::endl;
-			}
-			else if  (msg == "2") {
-				std::cout << "Была запрошена команда 2)" << std::endl;
-			}else if (msg == "3") {
-				std::cout << "Была запрошена команда 3)" << std::endl;
-			}else if (msg == "4") {
-				std::cout << "Была запрошена команда 4)" << std::endl;
-			}
-			else {
-				std::cout << "Не понял" << std::endl;
-			}
-			send(Connections[i], (char*)&msg_size, sizeof(int), NULL);
-			send(Connections[i], msg, msg_size, NULL);
-		}
-		delete[] msg;
-	}
-}
 struct MESSAGE
 {
 	bool success = true;
 	std::string type;
 	std::string data = "";
 };
+
+MESSAGE handler(MESSAGE message) {
+	MESSAGE answer = MESSAGE();
+	if (message.type == "01") {
+		answer.data = "понян обработал 1";
+		std::cout << "Была запрошена команда 1)" << std::endl;
+	}
+	else if (message.type == "02") {
+		answer.data = "понян обработал 2";
+		std::cout << "Была запрошена команда 2)" << std::endl;
+	}
+	else if (message.type == "03") {
+		answer.data = "понян обработал 3, а еще ты ввел данные: "+message.data;
+		std::cout << "Была запрошена команда 3)" << std::endl;
+	}
+	else if (message.type == "04") {
+		answer.data = "понян обработал 4";
+		std::cout << "Была запрошена команда 4)" << std::endl;
+	}
+	else {
+		answer.success = false;
+		answer.data = "не понял";
+	}
+	return answer;
+}
+
+void send_message(int index, MESSAGE message) {
+	std::string text = message.data;
+	int text_size = text.length();
+	send(Connections[index], (char*)&text_size, sizeof(int), NULL);
+	send(Connections[index], text.c_str(), text_size, NULL);
+}
+
+void Start_listen(int index) {
+	int msg_size;
+	while (true) {
+		recv(Connections[index], (char*)&msg_size, sizeof(int), NULL);
+		char* msg = new char[msg_size + 1];
+		
+		msg[msg_size] = '\0';
+		recv(Connections[index], msg, msg_size, NULL);
+
+		// первые 2 символа будут являться номером команды. все что позже - данные
+		MESSAGE message = MESSAGE();
+		std::string msg_str = msg;
+		message.type = msg_str.substr(0, 2);
+		message.data = msg_str.substr(2);
+
+		MESSAGE answer = handler(message);
+		send_message(index, answer);
+
+		delete[] msg;
+	}
+}
+
 class DB
 {
 public:

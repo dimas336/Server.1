@@ -3,71 +3,23 @@
 #include <iostream>
 #include <string>
 #include <list>
-#pragma warning(disable: 4996)
+#include <nlohmann/json.hpp>
+#pragma warning(disable : 4996)
 
 SOCKET Connections[100];
 int Counter = 0;
 
-struct MESSAGE
+struct  RESPONSE
 {
 	bool success = true;
-	std::string type;
 	std::string data = "";
 };
 
-MESSAGE handler(MESSAGE message) {
-	MESSAGE answer = MESSAGE();
-	if (message.type == "01") {
-		answer.data = "понян обработал 1";
-		std::cout << "Была запрошена команда 1)" << std::endl;
-	}
-	else if (message.type == "02") {
-		answer.data = "понян обработал 2";
-		std::cout << "Была запрошена команда 2)" << std::endl;
-	}
-	else if (message.type == "03") {
-		answer.data = "понян обработал 3, а еще ты ввел данные: "+message.data;
-		std::cout << "Была запрошена команда 3)" << std::endl;
-	}
-	else if (message.type == "04") {
-		answer.data = "понян обработал 4";
-		std::cout << "Была запрошена команда 4)" << std::endl;
-	}
-	else {
-		answer.success = false;
-		answer.data = "не понял";
-	}
-	return answer;
-}
-
-void send_message(int index, MESSAGE message) {
-	std::string text = message.data;
-	int text_size = text.length();
-	send(Connections[index], (char*)&text_size, sizeof(int), NULL);
-	send(Connections[index], text.c_str(), text_size, NULL);
-}
-
-void Start_listen(int index) {
-	int msg_size;
-	while (true) {
-		recv(Connections[index], (char*)&msg_size, sizeof(int), NULL);
-		char* msg = new char[msg_size + 1];
-		
-		msg[msg_size] = '\0';
-		recv(Connections[index], msg, msg_size, NULL);
-
-		// первые 2 символа будут являться номером команды. все что позже - данные
-		MESSAGE message = MESSAGE();
-		std::string msg_str = msg;
-		message.type = msg_str.substr(0, 2);
-		message.data = msg_str.substr(2);
-
-		MESSAGE answer = handler(message);
-		send_message(index, answer);
-
-		delete[] msg;
-	}
-}
+struct REQUEST
+{
+	int type = 0;
+	std::string data = "";
+};
 
 class DB
 {
@@ -95,18 +47,94 @@ public:
 	static std::string get_user_passwd(int user_id) {}
 };
 
+class ChatController
+{
+public:
+	static RESPONSE send_message_command_handler(REQUEST command) {
+		/*
+		принимает сообщение пользователя и обрабатывает его
+		*/
+		std::string data = command.data;
+
+	}
+};
+
 class AuthoriseController
 {
 public:
-	static MESSAGE login(std::string data);
-	static MESSAGE logout(std::string data);
+	static RESPONSE login(std::string data);
+	static RESPONSE logout(std::string data);
 };
-int main(int argc, char* argv[]) {
-	//WSAStartup
+
+RESPONSE handler(REQUEST message)
+{
+	RESPONSE answer = RESPONSE();
+	switch (message.type){
+	case 1:
+		answer.data = "понян обработал 1";
+		std::cout << "Была запрошена команда 1" << std::endl;
+		break;
+	case 3:
+		answer.data = "your command is 3, your data is: " + message.data;
+		std::cout << "Была запрошена команда 3" << std::endl;
+		break;
+	default:
+		answer.success = false;
+		answer.data = "не понял команду";
+	}
+	return answer;
+}
+
+std::string RESPONSE_to_JSON(RESPONSE response) {
+	nlohmann::json j{};
+	j["success"] = response.success;
+	j["data"] = response.data;
+	std::cout << j;
+	return j.dump();
+}
+
+void send_message(int index, RESPONSE response)
+{
+	std::string text = RESPONSE_to_JSON(response);
+	text = response.data;
+	int text_size = text.length();
+	send(Connections[index], (char *)&text_size, sizeof(int), NULL);
+	send(Connections[index], text.c_str(), text_size, NULL);
+}
+
+void Start_listen(int index)
+{
+	int msg_size;
+	while (true)
+	{
+		recv(Connections[index], (char *)&msg_size, sizeof(int), NULL);
+		char * serialized_request = new char[msg_size + 1];
+
+		serialized_request[msg_size] = '\0';
+		recv(Connections[index], serialized_request, msg_size, NULL);
+
+		std::cout << "принято от клиента: " << serialized_request << std::endl;
+
+		REQUEST request = REQUEST();
+		nlohmann::json json = nlohmann::json::parse(serialized_request);
+		request.type = json["type"].get<int>();
+		request.data = json["data"].get<std::string>();
+
+		RESPONSE response = handler(request);
+		send_message(index, response);
+
+		delete[] serialized_request;
+	}
+}
+
+int main(int argc, char *argv[])
+{
+	// WSAStartup
 	WSAData wsaData;
 	setlocale(LC_ALL, "Russian");
 	WORD DLLVersion = MAKEWORD(2, 1);
-	if (WSAStartup(DLLVersion, &wsaData) != 0) {
+	if (WSAStartup(DLLVersion, &wsaData) != 0)
+	{
 		std::cout << "Error" << std::endl;
 		exit(1);
 	}
@@ -118,24 +146,26 @@ int main(int argc, char* argv[]) {
 	addr.sin_family = AF_INET;
 
 	SOCKET sListen = socket(AF_INET, SOCK_STREAM, NULL);
-	bind(sListen, (SOCKADDR*)&addr, sizeof(addr));
+	bind(sListen, (SOCKADDR *)&addr, sizeof(addr));
 	listen(sListen, SOMAXCONN);
 
 	SOCKET newConnection;
-	for (int i = 0; i < 100; i++) {
-		newConnection = accept(sListen, (SOCKADDR*)&addr, &sizeofaddr);
+	for (int i = 0; i < 100; i++)
+	{
+		newConnection = accept(sListen, (SOCKADDR *)&addr, &sizeofaddr);
 
-		if (newConnection == 0) {
+		if (newConnection == 0)
+		{
 			std::cout << "Error #2\n";
 		}
-		else {
+		else
+		{
 			std::cout << "Client Connected!\n";
 			Connections[i] = newConnection;
 			Counter++;
 			CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)Start_listen, (LPVOID)(i), NULL, NULL);
 		}
 	}
-
 
 	system("pause");
 	return 0;
